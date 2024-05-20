@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Function to check if a file exists, is a regular file, and if exactly three arguments are provided
+
+files_check() {
+    # Check if exactly three arguments are provided
+    if [[ $# -ne 3 ]]; 
+    then
+        echo "Usage: $0 <gdp-vs-happiness.tsv> <homicide-rate-unodc.tsv> <life-satisfaction-vs-life-expectany.tsv>"
+        exit 1
+    fi
+    
+    # Check if each file exists and is a regular file
+    for file in "$@"; 
+    do
+        if [[ ! -f $file ]]; 
+        then
+            echo "File '$file' is not correct type or missing."
+            exit 2
+        fi
+    done
+}
+
+data_cleaning() {
+    # calls the file_check function
+    files_check "$@"
+    
+    # prints ok if all the files are in the proper order
+    echo "OK"
+}
+
+# calls the main function
+data_cleaning "$@"
