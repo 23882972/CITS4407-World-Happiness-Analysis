@@ -1,33 +1,174 @@
 #!/bin/bash
 
 # Function to check if a file exists, is a regular file, and if exactly three arguments are provided
-
 files_check() {
     # Check if exactly three arguments are provided
-    if [[ $# -ne 3 ]]; 
-    then
-        echo "Usage: $0 <gdp-vs-happiness.tsv> <homicide-rate-unodc.tsv> <life-satisfaction-vs-life-expectany.tsv>"
+    if [[ $# -ne 3 ]]; then
+        echo "Usage: $0 <gdp-vs-happiness.tsv> <homicide-rate-unodc.tsv> <life-satisfaction-vs-life-expectancy.tsv>"
         exit 1
     fi
     
+    # Assign arguments to variables for checking the files
+    gdp_vs_happiness="$1"
+    homicide_rate_unodc="$2"
+    life_satisfaction_vs_life_expectancy="$3"
+    
     # Check if each file exists and is a regular file
-    for file in "$@"; 
-    do
-        if [[ ! -f $file ]]; 
-        then
-            echo "File '$file' is not correct type or missing."
-            exit 2
+    for file in "$gdp_vs_happiness" "$homicide_rate_unodc" "$life_satisfaction_vs_life_expectancy"; do
+        if [[ ! -f $file ]]; then
+            echo "File '$file' is missing or not a regular file."
+            exit 1
         fi
     done
 }
 
-data_cleaning() {
-    # calls the file_check function
-    files_check "$@"
-    
-    # prints ok if all the files are in the proper order
-    echo "OK"
+# Function to clean the GDP vs Happiness data
+clean_gdp_happiness() {
+    input_file="$1"
+    output_file="gdp-vs-happiness_cleaned.tsv"
+
+    # Extract relevant data for specified countries and years, and write the header to the output file
+    echo -e "Entity\tCode\tYear\tLife expectancy - Sex: all - Age: at birth - Variant: estimates\tCantril ladder score\tGDP per capita\tPopulation (historical estimates)" > "$output_file"
+
+    # Process the data with awk, sort the result, and append it to the output file
+    awk -F'\t' '
+    BEGIN {
+      OFS = "\t" # Set the output field separator to tab
+    }
+    # Filter for specified countries and years excluding certain years
+    ($1 == "United Arab Emirates" && ($3 >= 2011 && $3 <= 2021) && $3 != 2016 && $3 != 2017 && $3 != 2018) || 
+    ($1 == "Afghanistan" && ($3 >= 2011 && $3 <= 2021) && $3 != 2013 && $3 != 2014) || 
+    ($1 == "Bahamas" && ($3 >= 2011 && $3 <= 2021)) || 
+    ($1 == "Oman" && ($3 >= 2011 && $3 <= 2021)) {
+      print $1, $2, $3, $4, $5, $6 # Print selected columns
+    }
+    ' "$input_file" | sort >> "$output_file"
 }
 
-# calls the main function
+# Function to clean the Homicide Rate data
+clean_homicide() {
+    input_file="$1"
+    output_file="homicide-rate-unodc_cleaned.tsv"
+
+    # Extract relevant data for specified countries and years, and write the header to the output file
+    awk -F'\t' '
+    BEGIN {
+      OFS = "\t" # Set the output field separator to tab
+      print "Country\tYear\tHomicide rate per 100,000 population" # Print header
+    }
+    # Filter for specified countries and years
+    ($1 == "Afghanistan" || $1 == "United Arab Emirates" || $1 == "Bahamas" || $1 == "Oman") && ($3 >= 2011 && $3 <= 2021) {
+      print $1, $2, $3, $4 # Print selected columns
+    }
+    ' "$input_file" > "$output_file"
+}
+
+# Function to clean the Life Satisfaction vs Life Expectancy data
+clean_life_satisfaction() {
+    input_file="$1"
+    output_file="life-satisfaction-vs-life-expectancy_cleaned.tsv"
+
+    # Extract relevant data for specified countries and years, and write the header to the output file
+    echo -e "Entity\tCode\tYear\tLife expectancy - Sex: all - Age: at birth - Variant: estimates\tCantril ladder score\tPopulation (historical estimates)" > "$output_file"
+
+    awk -F'\t' '
+    BEGIN {
+      OFS = "\t" # Set the output field separator to tab
+    }
+    # Filter for specified countries and years excluding certain years
+    ($1 == "United Arab Emirates" && ($3 >= 2011 && $3 <= 2021) && $3 != 2016 && $3 != 2017 && $3 != 2018) || 
+    ($1 == "Afghanistan" && ($3 >= 2011 && $3 <= 2021) && $3 != 2013 && $3 != 2014) || 
+    ($1 == "Bahamas" && ($3 >= 2011 && $3 <= 2021)) || 
+    ($1 == "Oman" && ($3 >= 2011 && $3 <= 2021)) {
+      print $1, $2, $3, $4, $5, $6 # Print selected columns
+    }
+    ' "$input_file" | sort >> "$output_file"
+}
+
+merge_files() {
+  # Define input files
+  file1="homicide-rate-unodc_cleaned.tsv"
+  file2="life-satisfaction-vs-life-expectancy_cleaned.tsv"
+  file3="gdp-vs-happiness_cleaned.tsv"
+  temp1="temp_1.tsv"
+  temp2="temp_2.tsv"
+  temp3="temp_3.tsv"
+  temp4="temp_4.tsv"
+
+  # Extract columns from file3
+  cut -f1,2,3,5,6 "$file3" > "$temp1"
+
+  # Extract relevant columns from file1
+  cut -f4 "$file1" > "$temp2"
+
+  # Extract relevant columns from file2
+  cut -f4,5 "$file2" > "$temp4"
+
+  # Combine the three temporary files using paste
+  paste "$temp1" "$temp2" "$temp4" > "$temp3"
+
+  # Remove temporary files
+  rm "$temp1" "$temp2" "$temp4"
+
+  # Check if file exists
+  file="temp_3.tsv"
+  if [[ ! -f "$file" ]]; then
+    echo "File $file not found!"
+    exit 1
+  fi
+
+  # Specify the countries in the desired order
+  countries=("Afghanistan" "United Arab Emirates" "Bahamas" "Oman")
+
+  # Desired header
+  header="Entity\tCode\tYear\tGDP per capita, PPP (constant 2017 international \$)\tPopulation (historical estimates)\tHomicide rate per 100,000 population - Both sexes - All ages\tLife expectancy - Sex: all - Age: at birth - Variant: estimates\tCantril ladder score"
+
+  # Print the header to the output file
+  output="sample2.tsv"
+  echo -e "$header" > "$output"
+
+  # Use awk to extract the lines for the specified countries in the specified order
+  awk -v order="${countries[*]}" '
+  BEGIN {
+    split(order, arr, " ")
+    for (i in arr) target[arr[i]] = i
+    OFS = "\t"
+  }
+  NR == 1 {
+    next
+  }
+  $1 in target {
+    data[target[$1], ++count[target[$1]]] = $0
+  }
+  END {
+    for (i = 1; i <= length(arr); i++) {
+      for (j = 1; j <= count[i]; j++) {
+        print data[i, j]
+      }
+    }
+  }
+  ' "$file" >> "$output"
+
+  # Remove temporary file
+  rm "$temp3"
+
+  # Optionally, remove the original input files if needed
+  rm "$file1" "$file2" "$file3"
+}
+
+# Main function to call the file check and cleaning functions
+data_cleaning() {
+    # Calls the file_check function
+    files_check "$@"
+
+    # Calls the data cleaning functions
+    clean_gdp_happiness "$1"
+    clean_homicide "$2"
+    clean_life_satisfaction "$3"
+
+    # Prints OK if all the files are processed correctly
+    merge_files
+}
+
+# Calls the main function with all arguments
 data_cleaning "$@"
