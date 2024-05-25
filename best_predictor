@@ -1,0 +1,112 @@
+#!/bin/bash
+
+# Check if the input file is provided
+
+#Check whether the tsv file exists in the agrument
+tsv_file_check() {
+ local tsv_file="$1"
+    # Check if the file exists
+    if [[ ! -f "$tsv_file" ]]; then
+        echo "Error: The file '$file' was not found!"
+        exit 1
+    fi
+
+    # Check if the file is a TSV (Tab-Separated Values) file
+    if [[ "${tsv_file##*.}" != "tsv" ]]; then
+        echo "Error: The file '$tsv_file' is not a TSV file! Please ensure the file should end with .tsv extension."
+        exit 1
+    fi
+}
+
+# Function to clean the input file
+clean_tsv_file() {
+  input_file="$1"
+  temp_file="cleaned_${input_file}.tsv"
+  awk -F'\t' 'NR==1 {print $0} NR>1 && $8!="" && $4!="" && $5!="" && $6!="" && $7!=""' "$input_file" > "$temp_file"
+}
+
+# Function to calculate the Pearson correlation coefficient according to entity
+pearson_correlation_entity() {
+  awk -F'\t' -v col1="$1" -v col2="$2" '
+  {
+    entity[$1]++;
+    a[$1]+=$col1;
+    c[$1]+=$col2;
+    aa[$1]+=$col1*$col1;
+    cc[$1]+=$col2*$col2;
+    ac[$1]+=$col1*$col2;
+  }
+  END {
+    for (e in entity) {
+      if (entity[e] >= 3) { # Only include entities with at least 3 data pairs
+        n = entity[e];
+        num = (n * ac[e]) - (a[e] * c[e]);
+        den = sqrt(((n * aa[e]) - (a[e] * a[e])) * ((n * cc[e]) - (c[e] * c[e])));
+        if (den != 0)
+          corr[e] = num / den;
+        else
+          corr[e] = 0;
+        sum_corr += corr[e];
+        count++;
+      }
+    }
+    if (count > 0)
+      mean_corr = sum_corr / count;
+    else
+      mean_corr = 0;
+    printf("%.3f\n", mean_corr); # Round to 3 decimal places
+  }' "$temp_file"
+}
+#Function to display best predictor
+display_best_predictor(){
+  # Variables names are set according to column numbers
+  best_predictor=$(awk -v fourth_col="$1" -v fifth_col="$2" -v sixth_col="$3" -v seventh_col="$4" '
+  BEGIN {
+    abs_gdp = (fourth_col < 0 ? -fourth_col : fourth_col);
+    abs_population = (fifth_col < 0 ? -fifth_col : fifth_col);
+    abs_homicide = (sixth_col < 0 ? -sixth_col : sixth_col);
+    abs_life_exp = (seventh_col < 0 ? -seventh_col : seventh_col);
+
+    max = abs_gdp;
+    predictor = "GDP";
+    corr_value = first_col;
+
+    if (abs_population > max) {max = abs_population; predictor = "Population"; corr_value = fifth_col;}
+    if (abs_homicide > max) {max = abs_homicide; predictor = "Homicide Rate"; corr_value = sixth_col;}
+    if (abs_life_exp > max) {max = abs_life_exp; predictor = "Life Expectancy"; corr_value = seventh_col;}
+
+    printf("Most predictive mean correlation with the Cantril ladder is %s (r = %.3f)\n", predictor, corr_value);
+  }')
+
+  echo "$best_predictor"
+}
+display_mean_corr() {
+  # Display the mean correlation according to number of agruments
+  echo "Mean correlation of Homicide Rate with Cantril ladder is $3"
+  echo "Mean correlation of GDP with Cantril ladder is $1"
+  echo "Mean correlation of Population with Cantril ladder is $2"
+  echo "Mean correlation of Life Expectancy with Cantril ladder is $4"
+}
+
+main(){
+# Check whether the file is tsv or not
+tsv_file_check "$1"
+# Clean the input file
+clean_tsv_file "$1"
+
+# Cantril ladder is the 8th column in tsv
+cantril_score=8
+# Calculate mean Pearson correlation coefficients for each predictor according to their column numbers based on the entity
+mean_corr_gdp=$(pearson_correlation_entity 4 $cantril_score)
+mean_corr_population=$(pearson_correlation_entity 5 $cantril_score)
+mean_corr_homicide=$(pearson_correlation_entity 6 $cantril_score)
+mean_corr_life_expectancy=$(pearson_correlation_entity 7 $cantril_score)
+
+# Display the results
+display_mean_corr "$mean_corr_gdp" "$mean_corr_population" "$mean_corr_homicide" "$mean_corr_life_expectancy"
+display_best_predictor "$mean_corr_gdp" "$mean_corr_population" "$mean_corr_homicide" "$mean_corr_life_expectancy"
+
+# Remove the cleaned file to avoid consuming system space
+rm $temp_file
+}
+main "$@"
