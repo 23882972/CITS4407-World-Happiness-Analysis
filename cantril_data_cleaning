@@ -4,25 +4,25 @@
 files_check() {
     # Check if exactly three arguments are provided
     if [[ $# -ne 3 ]]; then
-        echo "Usage: $0 <gdp-vs-happiness.tsv> <homicide-rate-unodc.tsv> <life-satisfaction-vs-life-expectancy.tsv>"
+        echo "Usage: $0 gdp-vs-happiness.tsv homicide-rate-unodc.tsv life-satisfaction-vs-life-expectancy.tsv"
         exit 1
     fi
-    
+
     # Assign arguments to variables for checking the files
-    gdp_vs_happiness="$1"
-    homicide_rate_unodc="$2"
-    life_satisfaction_vs_life_expectancy="$3"
+    tsv_file_1="$1" #gdp-vs-happiness.tsv
+    tsv_file_2="$2" #homicide-rate-unodc.tsv
+    tsv_file_3="$3" #life-satisfaction-vs-life-expectancy.tsv
     
     # Check if each file exists and is a regular file
-    for file in "$gdp_vs_happiness" "$homicide_rate_unodc" "$life_satisfaction_vs_life_expectancy"; do
+    for file in "$tsv_file_1" "$tsv_file_2" "$tsv_file_3"; do
         if [[ ! -f $file ]]; then
-            echo "File '$file' is missing or not a regular file."
+            echo "File '$file' is missing or not a tsv file."
             exit 1
         fi
     done
 }
 
-# Function to clean the GDP vs Happiness data
+# Function to clean gdp-vs-happiness.tsv
 clean_gdp_happiness() {
     input_file="$1"
     output_file="gdp-vs-happiness_cleaned.tsv"
@@ -45,7 +45,7 @@ clean_gdp_happiness() {
     ' "$input_file" | sort >> "$output_file"
 }
 
-# Function to clean the Homicide Rate data
+# Function to clean homicide-rate-unodc.tsv
 clean_homicide() {
     input_file="$1"
     output_file="homicide-rate-unodc_cleaned.tsv"
@@ -63,7 +63,7 @@ clean_homicide() {
     ' "$input_file" > "$output_file"
 }
 
-# Function to clean the Life Satisfaction vs Life Expectancy data
+# Function to clean the life-satisfaction-vs-life-expectancy.tsv
 clean_life_satisfaction() {
     input_file="$1"
     output_file="life-satisfaction-vs-life-expectancy_cleaned.tsv"
@@ -86,7 +86,7 @@ clean_life_satisfaction() {
 }
 
 merge_files() {
-  # Define input files
+  # Define input files and create temp files
   file1="homicide-rate-unodc_cleaned.tsv"
   file2="life-satisfaction-vs-life-expectancy_cleaned.tsv"
   file3="gdp-vs-happiness_cleaned.tsv"
@@ -95,7 +95,7 @@ merge_files() {
   temp3="temp_3.tsv"
   temp4="temp_4.tsv"
 
-  # Extract columns from file3
+  # Extract relevant columns from from file3
   cut -f1,2,3,5,6 "$file3" > "$temp1"
 
   # Extract relevant columns from file1
@@ -104,13 +104,13 @@ merge_files() {
   # Extract relevant columns from file2
   cut -f4,5 "$file2" > "$temp4"
 
-  # Combine the three temporary files using paste
+  # Combine the three temporary files into one file with correct number of columns
   paste "$temp1" "$temp2" "$temp4" > "$temp3"
 
   # Remove temporary files
   rm "$temp1" "$temp2" "$temp4"
 
-  # Check if file exists
+  # Check if temp file is exists or not
   file="temp_3.tsv"
   if [[ ! -f "$file" ]]; then
     echo "File $file not found!"
@@ -118,7 +118,7 @@ merge_files() {
   fi
 
   # Specify the countries in the desired order
-  countries=("Afghanistan" "United Arab Emirates" "Bahamas" "Oman")
+  entities=("Afghanistan" "United Arab Emirates" "Bahamas" "Oman")
 
   # Desired header
   header="Entity\tCode\tYear\tGDP per capita, PPP (constant 2017 international \$)\tPopulation (historical estimates)\tHomicide rate per 100,000 population - Both sexes - All ages\tLife expectancy - Sex: all - Age: at birth - Variant: estimates\tCantril ladder score"
@@ -128,7 +128,7 @@ merge_files() {
   echo -e "$header" > "$output"
 
   # Use awk to extract the lines for the specified countries in the specified order
-  awk -v order="${countries[*]}" '
+  awk -v order="${entities[*]}" '
   BEGIN {
     split(order, arr, " ")
     for (i in arr) target[arr[i]] = i
@@ -148,27 +148,22 @@ merge_files() {
     }
   }
   ' "$file" >> "$output"
-
-  # Remove temporary file
   rm "$temp3"
-
-  # Optionally, remove the original input files if needed
   rm "$file1" "$file2" "$file3"
 }
 
-# Main function to call the file check and cleaning functions
 data_cleaning() {
     # Calls the file_check function
     files_check "$@"
 
-    # Calls the data cleaning functions
+    # Calls all the data cleaning functions 
     clean_gdp_happiness "$1"
     clean_homicide "$2"
     clean_life_satisfaction "$3"
 
-    # Prints OK if all the files are processed correctly
+    # Calls merge function with sample2.tsv created in the directory
     merge_files
 }
 
-# Calls the main function with all arguments
+# Calls the functions
 data_cleaning "$@"
